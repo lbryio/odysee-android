@@ -147,6 +147,10 @@ public class SignInFragment extends Fragment {
                 buttonSecondary.setText(signInMode ? R.string.sign_up : R.string.sign_in);
                 layoutPassword.setVisibility(signInMode ? View.GONE : View.VISIBLE);
                 inputPassword.setText("");
+
+                if (firstRunStepHandler != null) {
+                    firstRunStepHandler.onSignInModeChanged(signInMode);
+                }
             }
         });
 

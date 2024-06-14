@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowInsetsController;
 import android.widget.ImageView;
@@ -58,6 +59,7 @@ import com.odysee.app.model.lbryinc.RewardVerified;
 import com.odysee.app.tasks.RewardVerifiedHandler;
 import com.odysee.app.tasks.claim.ClaimListResultHandler;
 import com.odysee.app.tasks.claim.ClaimListTask;
+import com.odysee.app.ui.findcontent.FollowingFragment;
 import com.odysee.app.ui.firstrun.CreateChannelFragment;
 import com.odysee.app.ui.rewards.RewardVerificationFragment;
 import com.odysee.app.ui.firstrun.SignInFragment;
@@ -78,17 +80,20 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
 
     public static final int FIRST_RUN_STEP_ACCOUNT = 1;
     public static final int FIRST_RUN_STEP_CHANNEL = 2;
-    public static final int FIRST_RUN_STEP_REWARDS = 3;
+    public static final int FIRST_RUN_STEP_FOLLOW = 3;
+    public static final int FIRST_RUN_STEP_REWARDS = 4;
 
     private static final String PREFERENCE_KEY_INTERNAL_CURRENT_FIRST_RUN_STEP = "com.odysee.app.CurrentFirstRunStep";
 
     private int currentStep;
-    private boolean ytSyncOptInChecked;
+    private boolean currentSignInMode;
     private String currentChannelName;
+    private boolean ytSyncOptInChecked;
     private ViewPager2 viewPager;
     private ImageView pagerIndicator1;
     private ImageView pagerIndicator2;
     private ImageView pagerIndicator3;
+    private ImageView pagerIndicator4;
 
     private MaterialButton buttonSkip;
     private MaterialButton buttonContinue;
@@ -168,6 +173,7 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
         pagerIndicator1 = findViewById(R.id.pager_indicator_1);
         pagerIndicator2 = findViewById(R.id.pager_indicator_2);
         pagerIndicator3 = findViewById(R.id.pager_indicator_3);
+        pagerIndicator4 = findViewById(R.id.pager_indicator_4);
 
         buttonContinue = findViewById(R.id.first_run_continue_button);
         buttonSkip = findViewById(R.id.first_run_skip_button);
@@ -176,7 +182,7 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
         buttonSkip.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                finishFirstRun();
+                onCompleted(currentStep);
             }
         });
 
@@ -187,7 +193,7 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
                     if (!ytSyncOptInChecked) {
                         handleCreateChannel();
                     } else {
-                        proceedToRewardsStep();
+                        proceedToFollowStep();
                     }
                 } else if (currentStep == FIRST_RUN_STEP_REWARDS) {
                     // final step (Use Odysee)
@@ -287,7 +293,8 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
                                 // proceed to rewards step
                                 viewPager.setVisibility(View.VISIBLE);
                                 progressIndicator.setVisibility(View.GONE);
-                                proceedToRewardsStep();
+                                // TODO: Figure this out
+                                proceedToFollowStep();
                             } else {
                                 emailRewardChecked();
                             }
@@ -325,7 +332,7 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
                         new Handler(Looper.getMainLooper()).post(new Runnable() {
                             @Override
                             public void run() {
-                                proceedToRewardsStep();
+                                proceedToFollowStep();
                                 onRequestCompleted(FIRST_RUN_STEP_REWARDS);
                             }
                         });
@@ -373,6 +380,7 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
     private void displayControlsForStep(int step) {
         switch (step) {
             case FIRST_RUN_STEP_ACCOUNT:
+            case FIRST_RUN_STEP_FOLLOW:
             default:
                 buttonSkip.setVisibility(View.VISIBLE);
                 buttonContinue.setVisibility(View.INVISIBLE);
@@ -394,7 +402,7 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
 
     private void setActiveStep(int step) {
         currentStep = step;
-        ImageView[] indicators = { pagerIndicator1, pagerIndicator2, pagerIndicator3 };
+        ImageView[] indicators = { pagerIndicator1, pagerIndicator2, pagerIndicator3, pagerIndicator4 };
         for (int i = 0; i < indicators.length; i++) {
             indicators[i].setImageDrawable(AppCompatResources.getDrawable(this, (step == i + 1) ? R.drawable.selected_page_dot : R.drawable.page_dot));
         }
@@ -430,6 +438,8 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
             onRequestInProgress(true);
             checkChannelStep();
         } else if (completedStep == FIRST_RUN_STEP_CHANNEL) {
+            proceedToFollowStep();
+        } else if (completedStep == FIRST_RUN_STEP_FOLLOW) {
             proceedToRewardsStep();
         } else if (completedStep == FIRST_RUN_STEP_REWARDS) {
             finishFirstRun();
@@ -447,7 +457,7 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
                     checkEmailVerifiedRewardForChannelStep();
                 } else {
                     // this user already has a channel, move to the final step: rewards verification
-                    proceedToRewardsStep();
+                    proceedToFollowStep();
                 }
             }
 
@@ -467,6 +477,20 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
 
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(this);
         sp.edit().putInt(PREFERENCE_KEY_INTERNAL_CURRENT_FIRST_RUN_STEP, FIRST_RUN_STEP_CHANNEL).apply();
+    }
+
+    private void proceedToFollowStep() {
+        if (currentSignInMode /* Sign In */) {
+            proceedToRewardsStep();
+            return;
+        }
+
+        setActiveStep(FIRST_RUN_STEP_FOLLOW);
+        viewPager.setCurrentItem(FIRST_RUN_STEP_FOLLOW - 1);
+        displayControlsForStep(FIRST_RUN_STEP_FOLLOW);
+
+        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(this);
+        sp.edit().putInt(PREFERENCE_KEY_INTERNAL_CURRENT_FIRST_RUN_STEP, FIRST_RUN_STEP_FOLLOW).apply();
     }
 
     private void proceedToRewardsStep() {
@@ -503,6 +527,11 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
                 }
             }
         });
+    }
+
+    @Override
+    public void onSignInModeChanged(boolean signInMode) {
+        currentSignInMode = signInMode;
     }
 
     @Override
@@ -626,6 +655,12 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
                     }
                     return ccFragment;
                 case 2:
+                    FollowingFragment fFragment = FollowingFragment.class.newInstance();
+                    if (activity instanceof FirstRunStepHandler) {
+                        fFragment.setFirstRunStepHandler((FirstRunStepHandler) activity);
+                    }
+                    return fFragment;
+                case 3:
                     RewardVerificationFragment rvFragment = RewardVerificationFragment.class.newInstance();
                     if (activity instanceof FirstRunStepHandler) {
                         rvFragment.setFirstRunStepHandler((FirstRunStepHandler) activity);
@@ -636,7 +671,7 @@ public class FirstRunActivity extends AppCompatActivity implements FirstRunStepH
 
         @Override
         public int getItemCount() {
-            return 3;
+            return 4;
         }
     }
 

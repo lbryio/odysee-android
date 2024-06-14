@@ -66,7 +66,7 @@
     <!-- Following page -->
     <string name="find_channels_to_follow">Find Channels to follow</string>
     <string name="discover">Discover</string>
-    <string name="lbry_works_better">LBRY works better if you follow at least 5 creators you like. Sign in to show creators you follow if you already have an account.</string>
+    <string name="lbry_works_better">Odysee works better if you follow at least 5 creators you like.</string>
     <string name="select_five_subscriptions">Please select up to 5 creators to continue.</string>
     <string name="n_remaining">%1$d remaining…</string>
     <string name="done">Done</string>

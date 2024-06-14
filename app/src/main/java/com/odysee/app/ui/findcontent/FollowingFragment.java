@@ -7,6 +7,7 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -21,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.button.MaterialButton;
 
+import com.odysee.app.FirstRunActivity;
 import com.odysee.app.OdyseeApp;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -39,6 +41,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 import com.odysee.app.MainActivity;
 import com.odysee.app.R;
@@ -62,12 +65,15 @@ import com.odysee.app.listener.ChannelItemSelectionListener;
 import com.odysee.app.tasks.lbryinc.FetchSubscriptionsTask;
 import com.odysee.app.ui.BaseFragment;
 import com.odysee.app.utils.ContentSources;
+import com.odysee.app.utils.FirstRunStepHandler;
 import com.odysee.app.utils.Helper;
 import com.odysee.app.utils.Lbry;
 import com.odysee.app.utils.LbryAnalytics;
 import com.odysee.app.utils.LbryUri;
 import com.odysee.app.utils.Lbryio;
 import com.odysee.app.utils.Predefined;
+
+import lombok.Setter;
 
 public class FollowingFragment extends BaseFragment implements
         FetchSubscriptionsTask.FetchSubscriptionsHandler,
@@ -139,6 +145,10 @@ public class FollowingFragment extends BaseFragment implements
 
     private boolean fetchingScheduledClaims = false;
     private boolean scheduledClaimsFetched = false;
+
+    @Setter
+    private FirstRunStepHandler firstRunStepHandler;
+
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -244,9 +254,13 @@ public class FollowingFragment extends BaseFragment implements
                 if (remaining == MIN_SUGGESTED_SUBSCRIBE_COUNT) {
                     showMessage(R.string.select_five_subscriptions);
                 } else {
-                    fetchSubscriptions();
-                    showSubscribedContent();
-                    fetchAndResolveChannelList();
+                    if (firstRunStepHandler != null) {
+                        firstRunStepHandler.onCompleted(FirstRunActivity.FIRST_RUN_STEP_FOLLOW);
+                    } else {
+                        fetchSubscriptions();
+                        showSubscribedContent();
+                        fetchAndResolveChannelList();
+                    }
                 }
             }
         });
@@ -468,10 +482,14 @@ public class FollowingFragment extends BaseFragment implements
             canShowMatureContent = sp.getBoolean(MainActivity.PREFERENCE_KEY_SHOW_MATURE_CONTENT, false);
         }
 
-        ContentSources.Category primaryCategory = null;
+        ArrayList<String> channelIds = null;
         for (ContentSources.Category category : ContentSources.DYNAMIC_CONTENT_CATEGORIES) {
             if ("PRIMARY_CONTENT".equalsIgnoreCase(category.getKey())) {
-                primaryCategory = category;
+                channelIds = new ArrayList<>(Arrays.asList(category.getChannelIds()));
+                channelIds.addAll(0, Arrays.asList(
+                        "80d2590ad04e36fb1d077a9b9e3a8bba76defdf8" /* @Odysee */,
+                        "b58dfaeab6c70754d792cdd9b56ff59b90aea334" /* @OdyseeHelp */
+                ));
                 break;
             }
         }
@@ -480,10 +498,10 @@ public class FollowingFragment extends BaseFragment implements
                 Claim.TYPE_CHANNEL,
                 null,
                 canShowMatureContent ? null : new ArrayList<>(Predefined.MATURE_TAGS),
-                primaryCategory != null ? Arrays.asList(primaryCategory.getChannelIds()) : null,
+                channelIds,
                 null,
                 excludeChannelIdsForDiscover,
-                Arrays.asList(Claim.ORDER_BY_TRENDING_MIXED),
+                Arrays.asList(Claim.ORDER_BY_TRENDING_GROUP, Claim.ORDER_BY_TRENDING_MIXED),
                 null,
                 currentSuggestedPage == 0 ? 1 : currentSuggestedPage,
                 SUGGESTED_PAGE_SIZE);
@@ -1062,6 +1080,14 @@ public class FollowingFragment extends BaseFragment implements
                         }
 
                         if (suggestedChannelAdapter == null) {
+                            // Put @Odysee and @OdyseeHelp channels at top of suggested
+                            List<Claim> featuredClaims = claims.stream().filter(claim ->
+                                    claim.getClaimId().equals("80d2590ad04e36fb1d077a9b9e3a8bba76defdf8" /* @Odysee */) ||
+                                            claim.getClaimId().equals("b58dfaeab6c70754d792cdd9b56ff59b90aea334" /* @OdyseeHelp */))
+                                    .collect(Collectors.toList());
+                            claims.removeAll(featuredClaims);
+                            claims.addAll(0, featuredClaims);
+
                             suggestedChannelAdapter = new SuggestedChannelGridAdapter(claims, getContext());
                             suggestedChannelAdapter.setListener(FollowingFragment.this);
                             if (suggestedChannelGrid != null) {
@@ -1115,7 +1141,7 @@ public class FollowingFragment extends BaseFragment implements
     }
 
     public void onError(Exception exception) {
-
+        showError(exception.getLocalizedMessage());
     }
 
     public void onChannelItemSelected(Claim claim) {
@@ -1174,10 +1200,7 @@ public class FollowingFragment extends BaseFragment implements
     }
 
     private void saveSharedUserState() {
-        Context context = getContext();
-        if (context instanceof MainActivity) {
-            ((MainActivity) context).saveSharedUserState();
-        }
+        MainActivity.instance.saveSharedUserState();
     }
 
     public void onSharedPreferenceChanged(SharedPreferences sp, String key) {
