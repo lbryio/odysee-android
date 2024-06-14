@@ -1763,8 +1763,18 @@ public class FileViewFragment extends BaseFragment implements
                 }
 
                 if (!Helper.isNullOrEmpty(chatMessage) && Lbry.ownChannels.size() > 0) {
-                    // send chat messages as the first created channel
-                    Claim channel = Lbry.ownChannels.get(0);
+                    // get channel to send chat messages as from set default channel
+                    String defaultChannelName = Helper.getDefaultChannelName(context);
+                    List<Claim> defaultChannel = Lbry.ownChannels
+                            .stream()
+                            .filter(c -> c != null && c.getName().equalsIgnoreCase(defaultChannelName))
+                            .collect(Collectors.toList());
+                    Claim channel;
+                    if (defaultChannel.size() > 0) {
+                        channel = defaultChannel.get(0);
+                    } else {
+                        channel = Lbry.ownChannels.get(0);
+                    }
 
                     // if the tip UI is open, then require a valid tip amount to be entered
                     final boolean shouldTip = layoutLivestreamChatTip.getVisibility() == View.VISIBLE;
@@ -1835,8 +1845,16 @@ public class FileViewFragment extends BaseFragment implements
                                         // TODO: show a successful tip message or no?
                                     }
 
+                                    // Channel Sign chat message
+                                    JSONObject channelSignParams = new JSONObject();
+                                    channelSignParams.put("auth_token", Lbryio.AUTH_TOKEN);
+                                    JSONObject jsonChannelSign = Comments.channelSignPrivate(
+                                            channelSignParams, channel.getClaimId(),
+                                            channel.getName(), chatMessage
+                                    );
+
                                     // Then on to comment creation
-                                    Map<String, Object> params = new HashMap<>();
+                                    JSONObject params = new JSONObject();
                                     params.put("claim_id", actualClaim.getClaimId());
                                     params.put("channel_id", channel.getClaimId());
                                     params.put("comment", chatMessage);
@@ -1844,9 +1862,14 @@ public class FileViewFragment extends BaseFragment implements
                                         params.put("support_tx_id", supportTxId);
                                     }
 
-                                    Lbry.authenticatedGenericApiCall(Lbry.METHOD_COMMENT_CREATE, params, Lbryio.AUTH_TOKEN);
+                                    if (jsonChannelSign.has("signature") && jsonChannelSign.has("signing_ts")) {
+                                        params.put("signature", jsonChannelSign.getString("signature"));
+                                        params.put("signing_ts", jsonChannelSign.getString("signing_ts"));
+                                    }
+
+                                    JSONObject response = (JSONObject) Lbry.parseResponse(Comments.performRequest(params, "comment.Create"));
                                     finishChatSend(true);
-                                } catch (ApiCallException | ClassCastException ex) {
+                                } catch (ApiCallException | LbryResponseException | JSONException | IOException ex) {
                                     showError(getString(R.string.could_not_send_chat_message));
                                     finishChatSend(false);
                                 }
